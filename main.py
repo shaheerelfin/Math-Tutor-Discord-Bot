@@ -5,6 +5,8 @@ import pytz
 import os
 from discord.ext import tasks
 from dotenv import load_dotenv
+from flask import Flask
+
 
 # Load environment variables safely
 load_dotenv()
@@ -483,4 +485,5 @@ class MathTutorBot(discord.Client):
 # Run the bot
 client = MathTutorBot()
 client.run(TOKEN)
+
 
