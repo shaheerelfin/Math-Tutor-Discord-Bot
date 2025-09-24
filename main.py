@@ -341,6 +341,8 @@ class MathTutorBot(discord.Client):
         intents.message_content = True
         super().__init__(intents=intents)
         self.current_day = 1
+        self.notifications_paused = False  # ← ADD THIS
+        self.pause_reason = ""  # ← ADD THIS
 
     async def on_ready(self):
         print(f'✅ Math Bot logged in as {self.user.name}')
@@ -350,11 +352,15 @@ class MathTutorBot(discord.Client):
     # 9:50 PM Reminder
     @tasks.loop(hours=24)
     async def reminder_9_50(self):
+        if self.notifications_paused:  # ← ADD THIS CHECK
+            return
         await self.send_reminder(50, "🔔 **10 minutes until your math lesson!** Get ready! 🚀")
 
     # 10:00 PM Main Lesson
     @tasks.loop(hours=24)
     async def daily_reminder(self):
+        if self.notifications_paused:  # ← ADD THIS CHECK
+            return
         await self.send_reminder(0, "main")
 
     async def send_reminder(self, minute_offset, message_type):
@@ -422,7 +428,29 @@ class MathTutorBot(discord.Client):
 
         content = message.content.lower()
         
-        if content.startswith('day '):
+        # ADD PAUSE/RESUME/STATUS COMMANDS HERE
+        if content == 'pause':
+            self.notifications_paused = True
+            self.pause_reason = "Manually paused by user"
+            await message.channel.send("⏸️ **Notifications PAUSED**\nUse `resume` to restart daily lessons.")
+            return
+
+        elif content == 'resume':
+            self.notifications_paused = False
+            self.pause_reason = ""
+            await message.channel.send("▶️ **Notifications RESUMED**\nDaily lessons will continue from Day " + str(self.current_day))
+            return
+
+        elif content == 'status':
+            if self.notifications_paused:
+                status_msg = f"⏸️ **PAUSED** - {self.pause_reason}\nCurrent Day: {self.current_day}"
+            else:
+                status_msg = f"🔔 **ACTIVE** - Next lesson: Day {self.current_day}\nNext reminder at 10:00 PM IST"
+            await message.channel.send(f"🤖 **Bot Status:** {status_msg}")
+            return
+
+        # YOUR EXISTING COMMANDS
+        elif content.startswith('day '):
             try:
                 day_num = int(content.split()[1])
                 if 1 <= day_num <= 14:
@@ -441,6 +469,9 @@ class MathTutorBot(discord.Client):
 **Commands:**
 `day X` - Get specific day's lesson (1-14)
 `progress` - Check your progress
+`pause` - Stop automatic notifications
+`resume` - Restart notifications  
+`status` - Check bot status
 `help` - This message
 
 **Auto-schedule:**
@@ -451,5 +482,5 @@ class MathTutorBot(discord.Client):
 
 # Run the bot
 client = MathTutorBot()
-
 client.run(TOKEN)
+
