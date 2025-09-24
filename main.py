@@ -11,6 +11,18 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
 
+client = discord.Client(intents=discord.Intents.default())
+
+app = Flask("keep_alive")  # tiny web server
+
+@app.route("/")
+def home():
+    return "Bot is alive!"
+
+# Run Flask in background thread
+import threading
+threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))).start()
+
 # Your curriculum data (same as before)
 CURRICULUM = {
     1: {
@@ -439,4 +451,5 @@ class MathTutorBot(discord.Client):
 
 # Run the bot
 client = MathTutorBot()
+
 client.run(TOKEN)
