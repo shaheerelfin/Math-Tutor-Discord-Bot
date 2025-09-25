@@ -474,7 +474,7 @@ class MathTutorBot(discord.Client):
 `pause` - Stop automatic notifications
 `resume` - Restart notifications  
 `status` - Check bot status
-`help` - This message
+`help` - This message commands
 
 **Auto-schedule:**
 9:50 PM - Preparation reminder
@@ -485,5 +485,6 @@ class MathTutorBot(discord.Client):
 # Run the bot
 client = MathTutorBot()
 client.run(TOKEN)
+
 
 
