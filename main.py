@@ -1,32 +1,23 @@
 import discord
+from discord.ext import tasks, commands
 import asyncio
 import datetime
 import pytz
 import os
-from discord.ext import tasks
 from dotenv import load_dotenv
 from flask import Flask
+import threading
 
-intents = discord.Intents.default()
-intents.message_content = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# Load environment variables safely
 load_dotenv()
-TOKEN = os.getenv('DISCORD_TOKEN')
-CHANNEL_ID = int(os.getenv('CHANNEL_ID'))
+TOKEN = os.getenv("DISCORD_TOKEN")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
-client = discord.Client(intents=discord.Intents.default())
-
-app = Flask("keep_alive")  # tiny web server
-
+# Keep-alive Flask app
+app = Flask("keep_alive")
 @app.route("/")
 def home():
     return "Bot is alive!"
 
-# Run Flask in background thread
-import threading
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))).start()
 
 # Your curriculum data (same as before)
@@ -341,172 +332,110 @@ def ai_pipeline(data):
     }
 }
 
-class MathTutorBot(discord.Client):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(intents=intents)
+class MathTutorBot(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
         self.current_day = 1
-        self.notifications_paused = False  # ← ADD THIS
-        self.pause_reason = ""  # ← ADD THIS
-
-    async def on_ready(self):
-        print(f'✅ Math Bot logged in as {self.user.name}')
+        self.notifications_paused = False
+        self.pause_reason = ""
         self.daily_reminder.start()
         self.reminder_9_50.start()
 
-    # 9:50 PM Reminder
-    @tasks.loop(hours=24)
-    async def reminder_9_50(self):
-        if self.notifications_paused:  # ← ADD THIS CHECK
-            return
-        await self.send_reminder(50, "🔔 **10 minutes until your math lesson!** Get ready! 🚀")
-
-    # 10:00 PM Main Lesson
     @tasks.loop(hours=24)
     async def daily_reminder(self):
-        if self.notifications_paused:  # ← ADD THIS CHECK
+        if self.notifications_paused:
             return
-        await self.send_reminder(0, "main")
+        await self.send_reminder(22, 0, "main")  # 10:00 PM
 
-    async def send_reminder(self, minute_offset, message_type):
-        ist = pytz.timezone('Asia/Kolkata')
+    @tasks.loop(hours=24)
+    async def reminder_9_50(self):
+        if self.notifications_paused:
+            return
+        await self.send_reminder(21, 50, "prep")  # 9:50 PM
+
+    async def send_reminder(self, hour, minute, msg_type):
+        ist = pytz.timezone("Asia/Kolkata")
         now = datetime.datetime.now(ist)
-        
-        if now.hour == 21 and now.minute == minute_offset:  # 9:50 PM or 10:00 PM
-            channel = self.get_channel(CHANNEL_ID)
+        if now.hour == hour and now.minute == minute:
+            channel = self.bot.get_channel(CHANNEL_ID)
             if channel:
-                if message_type == "main":
+                if msg_type == "main":
                     await self.send_daily_lesson(channel)
                 else:
-                    await channel.send(message_type)
+                    await channel.send("🔔 **10 minutes until your math lesson!** Get ready! 🚀")
 
     @daily_reminder.before_loop
-    async def before_daily(self):
-        await self.wait_until_ready()
-        await self.schedule_for_ist(22, 0)  # 10:00 PM
-
     @reminder_9_50.before_loop
-    async def before_reminder(self):
-        await self.wait_until_ready()
-        await self.schedule_for_ist(21, 50)  # 9:50 PM
+    async def before_loop(self):
+        await self.bot.wait_until_ready()
+        # Optional: schedule precise start with sleep here
 
-    async def schedule_for_ist(self, target_hour, target_minute):
-        ist = pytz.timezone('Asia/Kolkata')
-        now = datetime.datetime.now(ist)
-        target_time = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-        
-        if now >= target_time:
-            target_time += datetime.timedelta(days=1)
-            
-        wait_seconds = (target_time - now).total_seconds()
-        print(f'⏰ Next reminder in {wait_seconds/3600:.1f} hours')
-        await asyncio.sleep(wait_seconds)
-
-    async def send_daily_lesson(self, channel):
-        if self.current_day <= 14:
-            day_info = CURRICULUM[self.current_day]
-            
-            embed = discord.Embed(
-                title=f"📚 Day {day_info['day']}: {day_info['topic']}",
-                color=0x00ff00,
-                description=f"⏰ Today's Study Plan ({day_info['duration']})"
-            )
-            
-            embed.add_field(name="🎥 Video Lesson", value=day_info['video'], inline=False)
-            
-            tasks_text = "\n".join([f"• {task}" for task in day_info['tasks']])
-            embed.add_field(name="💻 Coding Tasks", value=tasks_text, inline=False)
-            
-            embed.add_field(name="🐍 Code Example", value=day_info['code_example'], inline=False)
-            
-            resources_text = "\n".join(day_info['resources'])
-            embed.add_field(name="📖 Resources", value=resources_text, inline=False)
-            
-            embed.set_footer(text=f"Progress: {self.current_day}/14 days • Keep going! 🚀")
-            
-            await channel.send(embed=embed)
-            self.current_day = (self.current_day % 14) + 1  # Loop after day 14
-
-    async def on_message(self, message):
-        if message.author == self.user:
-            return
-
-        content = message.content.lower()
-        
-        # ADD PAUSE/RESUME/STATUS COMMANDS HERE
-        if content == 'pause':
-            self.notifications_paused = True
-            self.pause_reason = "Manually paused by user"
-            await message.channel.send("⏸️ **Notifications PAUSED**\nUse `resume` to restart daily lessons.")
-            return
-
-        elif content == 'resume':
-            self.notifications_paused = False
-            self.pause_reason = ""
-            await message.channel.send("▶️ **Notifications RESUMED**\nDaily lessons will continue from Day " + str(self.current_day))
-            return
-
-        elif content == 'status':
-            if self.notifications_paused:
-                status_msg = f"⏸️ **PAUSED** - {self.pause_reason}\nCurrent Day: {self.current_day}"
-            else:
-                status_msg = f"🔔 **ACTIVE** - Next lesson: Day {self.current_day}\nNext reminder at 10:00 PM IST"
-            await message.channel.send(f"🤖 **Bot Status:** {status_msg}")
-            return
-
-        # YOUR EXISTING COMMANDS
-        elif content.startswith('day '):
-            try:
-                day_num = int(content.split()[1])
-                if 1 <= day_num <= 14:
-                    self.current_day = day_num
-                    channel = self.get_channel(CHANNEL_ID)
-                    if channel:
-                        await self.send_daily_lesson(channel)
-            except (IndexError, ValueError):
-                await message.channel.send("Usage: `day 1` to `day 14`")
-
-        elif content == 'progress':
-            await message.channel.send(f"📊 **Current Progress:** Day {self.current_day-1}/14")
-
-        elif content == 'help':
-            help_text = """
-**Commands:**
-`day X` - Get specific day's lesson (1-14)
-`progress` - Check your progress
-`pause` - Stop automatic notifications
-`resume` - Restart notifications  
-`status` - Check bot status
-`help` - This message commands
-
-**Auto-schedule:**
-9:50 PM - Preparation reminder
-10:00 PM - Full lesson delivery
-"""
-            await message.channel.send(help_text)
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
-
-@bot.command(name="day")
-async def day(ctx, *, arg):
-    # Remove extra spaces and lowercase input
-    arg = arg.strip().lower()
-    
-    # Expecting input like '1', '2', ..., '14'
-    if arg.isdigit():
-        day_num = int(arg)
+    @commands.command(name="day")
+    async def day_command(self, ctx, day_num: int):
         if 1 <= day_num <= 14:
-            await ctx.send(day_messages[day_num])
+            self.current_day = day_num
+            await self.send_daily_lesson(ctx.channel)
         else:
             await ctx.send("Invalid day. Please choose from 1 to 14.")
-    else:
-        await ctx.send("Invalid format. Usage: `!day 1` to `!day 14`")
+
+    async def send_daily_lesson(self, channel):
+        day_info = CURRICULUM[self.current_day]
+        embed = discord.Embed(
+            title=f"📚 Day {day_info['day']}: {day_info['topic']}",
+            description=f"⏰ Duration: {day_info['duration']}",
+            color=0x00ff00
+        )
+        embed.add_field(name="🎥 Video Lesson", value=day_info['video'], inline=False)
+        embed.add_field(name="💻 Coding Tasks", value="\n".join(f"• {t}" for t in day_info['tasks']), inline=False)
+        embed.add_field(name="🐍 Code Example", value=day_info['code_example'], inline=False)
+        embed.add_field(name="📖 Resources", value="\n".join(day_info['resources']), inline=False)
+        embed.set_footer(text=f"Progress: {self.current_day}/14")
+        await channel.send(embed=embed)
+
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+bot.add_cog(MathTutorBot(bot))
+
+@bot.event
+async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+
+@bot.event
+async def on_message(message):
+    if message.author == bot.user:
+        return
+    content = message.content.lower()
+
+    # Pause / resume / status commands
+    cog = bot.get_cog("MathTutorBot")
+    if content == "pause":
+        cog.notifications_paused = True
+        cog.pause_reason = "Manually paused"
+        await message.channel.send("⏸️ Notifications PAUSED. Use `resume` to restart.")
+        return
+    elif content == "resume":
+        cog.notifications_paused = False
+        cog.pause_reason = ""
+        await message.channel.send(f"▶️ Notifications RESUMED. Next lesson: Day {cog.current_day}")
+        return
+    elif content == "status":
+        status = "⏸️ PAUSED" if cog.notifications_paused else "🔔 ACTIVE"
+        await message.channel.send(f"🤖 Bot Status: {status} • Day {cog.current_day}")
+        return
+    elif content == "help":
+        await message.channel.send(
+            "**Commands:**\n"
+            "`!day X` - Get specific day's lesson (1-14)\n"
+            "`progress` - Check progress\n"
+            "`pause` / `resume` / `status`\n"
+            "`help` - Show this message"
+        )
+        return
+
+    await bot.process_commands(message)  # Important for !day command to work
+
+
+#client = MathTutorBot()
+bot.run(TOKEN)
 # Run the bot
-client = MathTutorBot()
-client.run(TOKEN)
-
-
 
 
