@@ -7,6 +7,10 @@ from discord.ext import tasks
 from dotenv import load_dotenv
 from flask import Flask
 
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Load environment variables safely
 load_dotenv()
@@ -481,10 +485,28 @@ class MathTutorBot(discord.Client):
 10:00 PM - Full lesson delivery
 """
             await message.channel.send(help_text)
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}")
 
+@bot.command(name="day")
+async def day(ctx, *, arg):
+    # Remove extra spaces and lowercase input
+    arg = arg.strip().lower()
+    
+    # Expecting input like '1', '2', ..., '14'
+    if arg.isdigit():
+        day_num = int(arg)
+        if 1 <= day_num <= 14:
+            await ctx.send(day_messages[day_num])
+        else:
+            await ctx.send("Invalid day. Please choose from 1 to 14.")
+    else:
+        await ctx.send("Invalid format. Usage: `!day 1` to `!day 14`")
 # Run the bot
 client = MathTutorBot()
 client.run(TOKEN)
+
 
 
 
